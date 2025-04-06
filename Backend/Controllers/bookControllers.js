@@ -28,6 +28,20 @@ const User = require('../Model/userModel');
 //     res.status(500).json({ message: error.message });
 //   }
 // };
+exports.getMultipleBooks = async (req, res) =>{
+  if (req.method === 'POST') {
+    try {
+      const { bookIds } = req.body;
+      const books = await Book.find({ _id: { $in: bookIds } });
+      res.status(200).json(books);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  } else {
+    res.setHeader('Allow', ['POST']);
+    res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+}
 exports.addBook = async (req, res) => {
   const { title, author, isbn, category, description, yearOfPublication, quantity } = req.body;
 
@@ -56,6 +70,22 @@ exports.addBook = async (req, res) => {
     res.status(201).json(savedBook);
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+exports.getBooksByIds = async (req, res) => {
+  console.log('here');
+  try {
+    const { bookIds } = req.body; // Expecting an array of book IDs in the request body
+
+    if (!Array.isArray(bookIds) || bookIds.length === 0) {
+      return res.status(400).json({ message: 'Invalid book IDs' });
+    }
+
+    const books = await Book.find({ _id: { $in: bookIds } }).select('title'); // Fetch only titles
+
+    res.json(books);
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error', error: error.message });
   }
 };
 

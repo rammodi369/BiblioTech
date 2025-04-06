@@ -156,6 +156,149 @@
 //   }
 // };
 
+// const BookRequest = require('../Model/BookRequestModel');
+// const Book = require('../Model/bookModel');
+// const User = require('../Model/userModel');
+
+// // Student creates a book request
+// exports.createBookRequest = async (req, res) => {
+//   const userId = req.user.id;
+//   const { bookId, requestType } = req.body;
+
+//   try {
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ message: 'User not found' });
+//     }
+
+//     const book = await Book.findById(bookId);
+//     if (!book) {
+//       return res.status(404).json({ message: 'Book not found' });
+//     }
+
+//     // Check if there's already a pending request for this book by the user
+//     const existingPendingRequest = await BookRequest.findOne({
+//       user: userId,
+//       book: bookId,
+//       requestType,
+//       status: 'pending',
+//     });
+
+//     if (existingPendingRequest) {
+//       return res.status(400).json({ message: 'You already have a pending request for this book.' });
+//     }
+
+//     // Allow creating a new request if the previous one was rejected or completed
+//     const bookRequest = new BookRequest({
+//       user: userId,
+//       book: bookId,
+//       requestType,
+//     });
+
+//     const savedRequest = await bookRequest.save();
+//     res.status(201).json(savedRequest);
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+// // Librarian approves/rejects a book request
+// exports.respondToRequest = async (req, res) => {
+//   const { status } = req.body;
+
+//   try {
+//     const requestInDb = await BookRequest.findById(req.params.id);
+//     if (!requestInDb) {
+//       return res.status(404).json({ message: 'Request not found' });
+//     }
+
+//     if (requestInDb.requestType === 'borrow') {
+//       if (status === 'approved') {
+//         const book = await Book.findById(requestInDb.book);
+//         if (!book) {
+//           return res.status(404).json({ message: 'Book not found' });
+//         }
+//         if (book.quantity <= 0) {
+//           return res.status(400).json({ message: 'Book out of stock' });
+//         }
+
+//         book.quantity--;
+//         book.availability = book.quantity > 0 ? 'available' : 'outOfStock';
+//         await book.save();
+
+//         const user = await User.findById(requestInDb.user);
+//         if (!user) {
+//           return res.status(404).json({ message: 'User not found' });
+//         }
+//         user.booksBorrowingCurrently.push(requestInDb.book);
+//         await user.save();
+
+//         book.usersHistory.push({ user: requestInDb.user, borrowedAt: new Date() });
+//         await book.save();
+//       }
+//     } else if (requestInDb.requestType === 'return') {
+//       if (status === 'approved') {
+//         const book = await Book.findById(requestInDb.book);
+//         if (!book) {
+//           return res.status(404).json({ message: 'Book not found' });
+//         }
+
+//         book.quantity++;
+//         book.availability = 'available';
+//         await book.save();
+
+//         const user = await User.findById(requestInDb.user);
+//         if (!user) {
+//           return res.status(404).json({ message: 'User not found' });
+//         }
+//         const index = user.booksBorrowingCurrently.indexOf(requestInDb.book);
+//         if (index !== -1) {
+//           user.booksBorrowingCurrently.splice(index, 1);
+//           await user.save();
+//         }
+
+//         const historyItem = book.usersHistory.find(
+//           (item) => item.user.toString() === requestInDb.user && !item.returnedAt
+//         );
+//         if (historyItem) {
+//           const borrowDate = new Date(historyItem.borrowedAt);
+//           const returnDate = new Date();
+//           historyItem.returnedAt = returnDate;
+//           await book.save();
+
+//           const diffTime = Math.abs(returnDate - borrowDate);
+//           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+//           if (diffDays > 7) {
+//             const fineAmount = (diffDays - 7) * 20;
+//             user.fine += fineAmount;
+//             await user.save();
+//           }
+//         }
+//       }
+//     }
+
+//     requestInDb.status = status;
+//     requestInDb.responseDate = new Date();
+//     await requestInDb.save();
+
+//     res.json(requestInDb);
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+// // Get all requests
+// exports.getAllRequests = async (req, res) => {
+//   try {
+//     const requests = await BookRequest.find()
+//       .populate('user', 'username email')
+//       .populate('book', 'title author');
+//     res.json(requests);
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
 const BookRequest = require('../Model/BookRequestModel');
 const Book = require('../Model/bookModel');
 const User = require('../Model/userModel');
@@ -167,34 +310,28 @@ exports.createBookRequest = async (req, res) => {
 
   try {
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     const book = await Book.findById(bookId);
-    if (!book) {
-      return res.status(404).json({ message: 'Book not found' });
-    }
+    if (!book) return res.status(404).json({ message: 'Book not found' });
 
-    // Check if there's already a pending request for this book by the user
+    // Check for existing pending requests
     const existingPendingRequest = await BookRequest.findOne({
       user: userId,
       book: bookId,
-      requestType,
       status: 'pending',
     });
-
     if (existingPendingRequest) {
       return res.status(400).json({ message: 'You already have a pending request for this book.' });
     }
 
-    // Allow creating a new request if the previous one was rejected or completed
-    const bookRequest = new BookRequest({
-      user: userId,
-      book: bookId,
-      requestType,
-    });
+    // Allow new request only if the last request was rejected or completed
+    const lastRequest = await BookRequest.findOne({ user: userId, book: bookId }).sort({ createdAt: -1 });
+    if (lastRequest && lastRequest.status === 'pending') {
+      return res.status(400).json({ message: 'You have an unresolved request for this book.' });
+    }
 
+    const bookRequest = new BookRequest({ user: userId, book: bookId, requestType });
     const savedRequest = await bookRequest.save();
     res.status(201).json(savedRequest);
   } catch (error) {
@@ -207,82 +344,55 @@ exports.respondToRequest = async (req, res) => {
   const { status } = req.body;
 
   try {
-    const requestInDb = await BookRequest.findById(req.params.id);
-    if (!requestInDb) {
-      return res.status(404).json({ message: 'Request not found' });
+    const request = await BookRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: 'Request not found' });
+
+    const book = await Book.findById(request.book);
+    const user = await User.findById(request.user);
+    if (!book || !user) return res.status(404).json({ message: 'Book or User not found' });
+
+    if (request.requestType === 'borrow' && status === 'approved') {
+      if (book.quantity <= 0) return res.status(400).json({ message: 'Book out of stock' });
+      
+      book.quantity--;
+      book.availability = book.quantity > 0 ? 'available' : 'outOfStock';
+      book.usersHistory.push({ user: user._id, borrowedAt: new Date() });
+      await book.save();
+
+      user.booksBorrowingCurrently.push(book._id);
+      await user.save();
     }
 
-    if (requestInDb.requestType === 'borrow') {
-      if (status === 'approved') {
-        const book = await Book.findById(requestInDb.book);
-        if (!book) {
-          return res.status(404).json({ message: 'Book not found' });
-        }
-        if (book.quantity <= 0) {
-          return res.status(400).json({ message: 'Book out of stock' });
-        }
+    if (request.requestType === 'return' && status === 'approved') {
+      book.quantity++;
+      book.availability = 'available';
+      await book.save();
 
-        book.quantity--;
-        book.availability = book.quantity > 0 ? 'available' : 'outOfStock';
+      user.booksBorrowingCurrently = user.booksBorrowingCurrently.filter(b => b.toString() !== book._id.toString());
+      user.booksBorrowed.push(book._id);
+      await user.save();
+
+      // Update borrow history
+      const historyItem = book.usersHistory.find(entry => entry.user.toString() === user._id.toString() && !entry.returnedAt);
+      if (historyItem) {
+        const borrowDate = new Date(historyItem.borrowedAt);
+        const returnDate = new Date();
+        historyItem.returnedAt = returnDate;
         await book.save();
 
-        const user = await User.findById(requestInDb.user);
-        if (!user) {
-          return res.status(404).json({ message: 'User not found' });
-        }
-        user.booksBorrowingCurrently.push(requestInDb.book);
-        await user.save();
-
-        book.usersHistory.push({ user: requestInDb.user, borrowedAt: new Date() });
-        await book.save();
-      }
-    } else if (requestInDb.requestType === 'return') {
-      if (status === 'approved') {
-        const book = await Book.findById(requestInDb.book);
-        if (!book) {
-          return res.status(404).json({ message: 'Book not found' });
-        }
-
-        book.quantity++;
-        book.availability = 'available';
-        await book.save();
-
-        const user = await User.findById(requestInDb.user);
-        if (!user) {
-          return res.status(404).json({ message: 'User not found' });
-        }
-        const index = user.booksBorrowingCurrently.indexOf(requestInDb.book);
-        if (index !== -1) {
-          user.booksBorrowingCurrently.splice(index, 1);
+        // Fine calculation (after 7 days)
+        const daysBorrowed = Math.ceil((returnDate - borrowDate) / (1000 * 60 * 60 * 24));
+        if (daysBorrowed > 7) {
+          user.fine += (daysBorrowed - 7) * 20;
           await user.save();
         }
-
-        const historyItem = book.usersHistory.find(
-          (item) => item.user.toString() === requestInDb.user && !item.returnedAt
-        );
-        if (historyItem) {
-          const borrowDate = new Date(historyItem.borrowedAt);
-          const returnDate = new Date();
-          historyItem.returnedAt = returnDate;
-          await book.save();
-
-          const diffTime = Math.abs(returnDate - borrowDate);
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-          if (diffDays > 7) {
-            const fineAmount = (diffDays - 7) * 20;
-            user.fine += fineAmount;
-            await user.save();
-          }
-        }
       }
     }
 
-    requestInDb.status = status;
-    requestInDb.responseDate = new Date();
-    await requestInDb.save();
-
-    res.json(requestInDb);
+    request.status = status;
+    request.responseDate = new Date();
+    await request.save();
+    res.json(request);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

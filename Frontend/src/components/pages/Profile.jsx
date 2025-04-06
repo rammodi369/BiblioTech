@@ -54,30 +54,65 @@
 // };
 
 // export default UserProfile;
-"use client";
-
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
-import { UserCircle, Pencil, Book, Clock, DollarSign } from "lucide-react";
+import { UserCircle, Book, Clock, DollarSign, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import axios from "axios";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, useStripe, useElements, PaymentElement } from "@stripe/react-stripe-js";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+const stripePromise = loadStripe("pk_test_51NbLkfSBLQ6uxxfTOCK2W7V1xtmplETjC6OqJ8EDo3eKDNnvvGMgKVtbK8Z6sZN7oooGajxuA9PSEXcdLBQ53BwB00E6eRCzZp");
 
 const UserProfile = () => {
   const { user } = useSelector((state) => state.user);
-  const [editedUser, setEditedUser] = useState({ ...user });
+  const [borrowedBooks, setBorrowedBooks] = useState([]);
+  const [currentBooks, setCurrentBooks] = useState([]);
+  const [clientSecret, setClientSecret] = useState("");
+  const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
+  const token = localStorage.getItem("token");
 
-  const handleEditSubmit = (e) => {
-    e.preventDefault();
-    // Here you would typically dispatch an action to update the user in your Redux store
-    console.log("Updated user:", editedUser);
+  useEffect(() => {
+    const fetchBooks = async (bookIds, setBooks) => {
+      if (!bookIds?.length) return;
+      try {
+        const response = await axios.post(
+          "http://localhost:5000/api/books/by-ids",
+          { bookIds },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setBooks(response.data);
+      } catch (error) {
+        console.error("Error fetching books:", error);
+      }
+    };
+
+    fetchBooks(user.booksBorrowed, setBorrowedBooks);
+    fetchBooks(user.booksBorrowingCurrently, setCurrentBooks);
+  }, [user, token]);
+
+  const createPaymentIntent = async () => {
+    if (user.fine <= 0) return;
+    setIsPaymentProcessing(true);
+
+    try {
+      const response = await axios.post(
+        "http://localhost:5000/api/auth/create-payment-intent",
+        {
+          amount: user.fine * 100, // Convert to paise (INR)
+          currency: "inr", // Ensure currency is INR
+          description: `Library fine payment for ${user.username}`,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setClientSecret(response.data.clientSecret);
+    } catch (error) {
+      console.error("Error creating payment intent:", error);
+    } finally {
+      setIsPaymentProcessing(false);
+    }
   };
 
   return (
@@ -85,105 +120,59 @@ const UserProfile = () => {
       <div className="max-w-3xl mx-auto">
         <div className="bg-white shadow-2xl rounded-3xl overflow-hidden">
           <div className="md:flex">
-            <div className="md:flex-shrink-0 bg-gradient-to-br from-purple-500 to-indigo-600 p-8 flex flex-col items-center justify-center">
-              <div className="relative">
-                <div className="w-48 h-48 rounded-full bg-white p-2">
-                  <div className="w-full h-full rounded-full bg-gradient-to-br from-purple-300 to-indigo-400 flex items-center justify-center overflow-hidden">
-                    {user.avatar ? (
-                      <img
-                        src={user.avatar}
-                        alt="User Avatar"
-                        className="w-full h-full object-cover rounded-full"
-                      />
-                    ) : (
-                      <UserCircle size={120} className="text-white" />
-                    )}
-                  </div>
+            {/* Profile Section */}
+            <div className="md:w-1/3 bg-gradient-to-br from-purple-500 to-indigo-600 p-8 flex flex-col items-center">
+              <div className="w-48 h-48 rounded-full bg-white p-2">
+                <div className="w-full h-full rounded-full bg-gradient-to-br from-purple-300 to-indigo-400 flex items-center justify-center overflow-hidden">
+                  {user.avatar ? (
+                    <img src={user.avatar} alt="User Avatar" className="w-full h-full object-cover rounded-full" />
+                  ) : (
+                    <UserCircle size={120} className="text-white" />
+                  )}
                 </div>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="absolute bottom-0 right-0 rounded-full bg-white hover:bg-gray-100"
-                    >
-                      <Pencil className="h-4 w-4 text-indigo-600" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle>Edit Profile</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleEditSubmit} className="space-y-4">
-                      <div>
-                        <Label htmlFor="username">Username</Label>
-                        <Input
-                          id="username"
-                          value={editedUser.username}
-                          onChange={(e) =>
-                            setEditedUser({
-                              ...editedUser,
-                              username: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="email">Email</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={editedUser.email}
-                          onChange={(e) =>
-                            setEditedUser({
-                              ...editedUser,
-                              email: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="role">Role</Label>
-                        <Input
-                          id="role"
-                          value={editedUser.role}
-                          onChange={(e) =>
-                            setEditedUser({
-                              ...editedUser,
-                              role: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <Button type="submit">Save Changes</Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
               </div>
-              <h1 className="mt-6 text-3xl font-bold text-white">
-                {user.username}
-              </h1>
-              <p className="mt-1 text-lg text-indigo-200">{user.role}</p>
-              <p className="mt-1 text-md text-indigo-100">{user.email}</p>
+              <h1 className="mt-6 text-3xl font-bold text-white">{user.username}</h1>
+              <p className="text-lg text-indigo-200">{user.role}</p>
+              <p className="text-md text-indigo-100">{user.email}</p>
             </div>
-            <div className="p-8 flex-grow">
+
+            {/* Books & Payment Section */}
+            <div className="md:w-2/3 p-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <ProfileSection
-                  title="Books Borrowed"
-                  icon={<Book className="h-6 w-6 text-indigo-500" />}
-                  items={user.booksBorrowed}
-                />
-                <ProfileSection
-                  title="Currently Borrowing"
-                  icon={<Clock className="h-6 w-6 text-indigo-500" />}
-                  items={user.booksBorrowingCurrently}
-                />
+                <ProfileSection title="Books Borrowed" icon={<Book className="h-6 w-6 text-indigo-500" />} items={borrowedBooks} />
+                <ProfileSection title="Currently Borrowing" icon={<Clock className="h-6 w-6 text-indigo-500" />} items={currentBooks} />
               </div>
-              <div className="mt-8 flex items-center justify-center">
-                <DollarSign className="h-8 w-8 text-green-500 mr-2" />
-                <span className="text-2xl font-semibold text-gray-700">
-                  Fine: $0
-                </span>
+
+              {/* Fine & Payment */}
+              <div className="mt-8 bg-white rounded-xl p-6 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <DollarSign className="h-8 w-8 text-red-500 mr-2" />
+                    <span className="text-2xl font-semibold text-gray-700">Fine: ₹{user.fine}</span>
+                  </div>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        className="bg-green-500 hover:bg-green-600 text-white flex items-center gap-2"
+                        disabled={user.fine === 0 || isPaymentProcessing}
+                        onClick={createPaymentIntent}
+                      >
+                        <CreditCard className="h-5 w-5" />
+                        {isPaymentProcessing ? "Processing..." : "Pay Fine"}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle>Pay Fine</DialogTitle>
+                      </DialogHeader>
+                      {clientSecret && (
+                        <Elements stripe={stripePromise} options={{ clientSecret }}>
+                          <CheckoutForm />
+                        </Elements>
+                      )}
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
             </div>
           </div>
@@ -199,12 +188,10 @@ const ProfileSection = ({ title, icon, items }) => (
       {icon}
       <h2 className="text-xl font-semibold text-gray-800 ml-2">{title}</h2>
     </div>
-    {items && items.length > 0 ? (
+    {items.length > 0 ? (
       <ul className="space-y-2">
         {items.map((item, index) => (
-          <li key={item._id || index} className="text-gray-600">
-            {item.title}
-          </li>
+          <li key={item._id || index} className="text-gray-600">{item.title}</li>
         ))}
       </ul>
     ) : (
@@ -212,5 +199,38 @@ const ProfileSection = ({ title, icon, items }) => (
     )}
   </div>
 );
+
+const CheckoutForm = () => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!stripe || !elements) return;
+
+    setIsProcessing(true);
+
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: { return_url: window.location.origin },
+    });
+
+    if (error) {
+      alert(error.message);
+    }
+
+    setIsProcessing(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <PaymentElement />
+      <Button type="submit" className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white" disabled={isProcessing}>
+        {isProcessing ? "Processing..." : "Pay Now"}
+      </Button>
+    </form>
+  );
+};
 
 export default UserProfile;

@@ -1,7 +1,7 @@
 const User = require("../Model/userModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); 
 exports.registerUser = async (req, res) => {
   console.log('Received registration request');
   console.log(req.body);
@@ -182,3 +182,18 @@ exports.getUserHistory = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+ exports.paymentHandler=async (req, res) => {
+  const { amount } = req.body; // amount should be in cents
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,             // e.g., 5000 for $50.00
+      currency: 'inr',
+      payment_method_types: ['card'],
+    });
+
+    res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (error) {
+    console.error("Error creating PaymentIntent:", error);
+    res.status(500).json({ error: error.message });
+  }
+}

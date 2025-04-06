@@ -15,5 +15,6 @@ router.post('/reset-password', authController.resetPassword);
 
 //Profile
 router.get('/profile/:id',authMiddleware.protect,authMiddleware.selfAuth,userController.getUserById);
-
+router.post('/create-payment-intent',userController.paymentHandler);
+  
 module.exports= router;
